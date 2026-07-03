@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/EmptyState";
 import { SharedItemCard } from "@/components/SharedItemCard";
+import { DeleteButton } from "@/components/DeleteButton";
 import { addItemToSharedList, deleteSharedList } from "@/app/shared/actions";
 import { tmdbImageUrl } from "@/lib/utils";
 import type { SharedListItemRow, VoteType } from "@/lib/supabase/database.types";
@@ -89,21 +90,11 @@ export default async function SharedListPage({
           </p>
         </div>
         {isOwner && (
-          <form
+          <DeleteButton
             action={boundDeleteList}
-            onSubmit={(e) => {
-              if (!confirm("Delete this shared list for everyone? This can't be undone.")) {
-                e.preventDefault();
-              }
-            }}
-          >
-            <button
-              type="submit"
-              className="rounded-full border border-rose-500/30 px-4 py-2 text-xs font-medium text-rose-400 transition hover:bg-rose-500/10"
-            >
-              Delete list
-            </button>
-          </form>
+            label="Delete list"
+            confirmMessage="Delete this shared list for everyone? This can't be undone."
+          />
         )}
       </div>
 
