@@ -12,6 +12,9 @@ import { ProgressTracker } from "@/components/ProgressTracker";
 import { ReviewsSection } from "@/components/ReviewsSection";
 import { SubmitButton } from "@/components/SubmitButton";
 import { DeleteButton } from "@/components/DeleteButton";
+import { NotesWithAiCleaner } from "@/components/NotesWithAiCleaner";
+import { MoodTagSuggestionTool } from "@/components/ai/MoodTagSuggestionTool";
+import { SpoilerFreeSummaryTool } from "@/components/ai/SpoilerFreeSummaryTool";
 import type { TmdbReview } from "@/lib/tmdb/types";
 import type { MoodTagLinkRow } from "@/lib/supabase/database.types";
 
@@ -119,17 +122,14 @@ export default async function LibraryItemPage({
             <div>
               <h3 className="mb-2 font-display text-lg text-foreground">Mood Tags</h3>
               <MoodTagPicker name="mood_tags" defaultSelected={selectedMoodTags} />
+              <div className="mt-2">
+                <MoodTagSuggestionTool itemId={item.id} />
+              </div>
             </div>
 
             <div>
               <h3 className="mb-2 font-display text-lg text-foreground">Personal Notes</h3>
-              <textarea
-                name="personal_notes"
-                defaultValue={item.personal_notes ?? ""}
-                rows={5}
-                placeholder="Write your own review, thoughts, or memories about this one…"
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-foreground outline-none transition focus:border-accent-rose/50"
-              />
+              <NotesWithAiCleaner defaultValue={item.personal_notes ?? ""} />
             </div>
 
             {item.media_type === "tv" && (
@@ -147,6 +147,15 @@ export default async function LibraryItemPage({
 
             <SubmitButton>Save changes</SubmitButton>
           </form>
+
+          <div className="glass-card space-y-3 rounded-2xl p-5">
+            <h3 className="font-display text-lg text-foreground">AI Tools</h3>
+            <p className="text-xs text-muted">
+              Mood tag suggestions live next to your Mood Tags above, and the review cleaner lives
+              next to Personal Notes — both stay right where you&apos;d use them.
+            </p>
+            <SpoilerFreeSummaryTool fixedItemId={item.id} />
+          </div>
 
           <ReviewsSection reviews={reviews} />
         </div>

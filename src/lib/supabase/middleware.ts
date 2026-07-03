@@ -8,6 +8,7 @@ const PROTECTED_PREFIXES = [
   "/ai",
   "/watch-tonight",
   "/random-picker",
+  "/shared",
 ];
 const AUTH_ONLY_PATHS = ["/login", "/signup"];
 

@@ -78,6 +78,7 @@ export const NAV_LINKS = [
   { href: "/watch-tonight", label: "Watch Tonight" },
   { href: "/random-picker", label: "Random Picker" },
   { href: "/ai", label: "AI ✨" },
+  { href: "/shared", label: "Shared Lists" },
 ] as const;
 
 // --- Watch Tonight ---

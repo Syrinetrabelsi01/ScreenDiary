@@ -59,6 +59,39 @@ export type MoodTagLinkRow = {
   mood_tags: { name: string } | null;
 }
 
+export type SharedListRow = {
+  id: string;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  invite_code: string;
+  created_at: string;
+}
+
+export type SharedListItemRow = {
+  id: string;
+  shared_list_id: string;
+  saved_item_id: string | null;
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  poster_path: string | null;
+  overview: string | null;
+  added_by: string;
+  created_at: string;
+}
+
+export type VoteType = "want_to_watch" | "maybe" | "not_interested";
+
+export type SharedListVoteRow = {
+  id: string;
+  shared_list_item_id: string;
+  voter_id: string;
+  vote_type: VoteType;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -85,6 +118,26 @@ export interface Database {
         Row: ItemMoodTagRow;
         Insert: { saved_item_id: string; mood_tag_id: number };
         Update: { saved_item_id?: string; mood_tag_id?: number };
+        Relationships: [];
+      };
+      shared_lists: {
+        Row: SharedListRow;
+        Insert: Partial<SharedListRow> & Pick<SharedListRow, "owner_id" | "name" | "invite_code">;
+        Update: Partial<SharedListRow>;
+        Relationships: [];
+      };
+      shared_list_items: {
+        Row: SharedListItemRow;
+        Insert: Partial<SharedListItemRow> &
+          Pick<SharedListItemRow, "shared_list_id" | "tmdb_id" | "media_type" | "title" | "added_by">;
+        Update: Partial<SharedListItemRow>;
+        Relationships: [];
+      };
+      shared_list_votes: {
+        Row: SharedListVoteRow;
+        Insert: Partial<SharedListVoteRow> &
+          Pick<SharedListVoteRow, "shared_list_item_id" | "voter_id" | "vote_type">;
+        Update: Partial<SharedListVoteRow>;
         Relationships: [];
       };
     };
