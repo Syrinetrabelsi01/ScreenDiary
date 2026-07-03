@@ -134,12 +134,14 @@ export default async function LibraryItemPage({
 
             {item.media_type === "tv" && (
               <ProgressTracker
-                key={`${item.current_season}-${item.current_episode}`}
+                key={`${item.current_season}-${item.current_episode}-${item.status}`}
                 itemId={item.id}
                 currentSeason={item.current_season}
                 currentEpisode={item.current_episode}
                 totalSeasons={item.total_seasons}
                 totalEpisodes={item.total_episodes}
+                seasonEpisodeCounts={item.season_episode_counts}
+                status={item.status}
               />
             )}
 

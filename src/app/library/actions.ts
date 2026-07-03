@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMovieDetails, getTvDetails } from "@/lib/tmdb/client";
+import { clampProgress, isFinalEpisode, advanceEpisode, finalProgress } from "@/lib/tvProgress";
 import type { SavedItemStatus, SavedItemRow } from "@/lib/supabase/database.types";
 
 export type AddToLibraryResult =
@@ -70,6 +71,26 @@ export async function addToLibrary(
               details.episode_run_time.length
           )
         : null;
+
+    // Season 0 is TMDb's convention for "Specials" — excluded so total_seasons/
+    // total_episodes and the finale detection in tvProgress.ts stay consistent
+    // with the season keys actually stored in season_episode_counts.
+    const regularSeasons = (details.seasons ?? []).filter(
+      (s) => s.season_number > 0 && s.episode_count > 0
+    );
+    const seasonEpisodeCounts =
+      regularSeasons.length > 0
+        ? Object.fromEntries(regularSeasons.map((s) => [String(s.season_number), s.episode_count]))
+        : null;
+    const totalSeasons =
+      regularSeasons.length > 0
+        ? Math.max(...regularSeasons.map((s) => s.season_number))
+        : details.number_of_seasons || null;
+    const totalEpisodes =
+      regularSeasons.length > 0
+        ? regularSeasons.reduce((sum, s) => sum + s.episode_count, 0)
+        : details.number_of_episodes || null;
+
     const { data, error } = await supabase
       .from("saved_items")
       .insert({
@@ -84,8 +105,9 @@ export async function addToLibrary(
         tmdb_rating: details.vote_average || null,
         current_season: 1,
         current_episode: 1,
-        total_seasons: details.number_of_seasons || null,
-        total_episodes: details.number_of_episodes || null,
+        total_seasons: totalSeasons,
+        total_episodes: totalEpisodes,
+        season_episode_counts: seasonEpisodeCounts,
         runtime_minutes: avgEpisodeRuntime,
       })
       .select("id")
@@ -111,7 +133,16 @@ export async function updateSavedItem(itemId: string, formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const status = String(formData.get("status") ?? "want_to_watch") as SavedItemStatus;
+  const { data: existing } = await supabase
+    .from("saved_items")
+    .select("media_type, total_seasons, total_episodes, season_episode_counts")
+    .eq("id", itemId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!existing) return;
+
+  let status = String(formData.get("status") ?? "want_to_watch") as SavedItemStatus;
   const personalRatingRaw = formData.get("personal_rating");
   const personalRating = personalRatingRaw ? Number(personalRatingRaw) : null;
   const emojiReaction = String(formData.get("emoji_reaction") ?? "") || null;
@@ -121,21 +152,46 @@ export async function updateSavedItem(itemId: string, formData: FormData) {
   const moodTags = formData.getAll("mood_tags").map(String);
 
   const update: Partial<SavedItemRow> = {
-    status,
     personal_rating: personalRating,
     emoji_reaction: emojiReaction,
     personal_notes: personalNotes,
   };
 
-  if (currentSeasonRaw) update.current_season = Number(currentSeasonRaw);
-  if (currentEpisodeRaw) update.current_episode = Number(currentEpisodeRaw);
+  if (existing.media_type === "tv" && currentSeasonRaw && currentEpisodeRaw) {
+    const progressMeta = {
+      totalSeasons: existing.total_seasons,
+      totalEpisodes: existing.total_episodes,
+      seasonEpisodeCounts: existing.season_episode_counts,
+    };
+    const clamped = clampProgress({
+      season: Number(currentSeasonRaw),
+      episode: Number(currentEpisodeRaw),
+      ...progressMeta,
+    });
+    update.current_season = clamped.season;
+    update.current_episode = clamped.episode;
+
+    const finished = isFinalEpisode({ ...clamped, ...progressMeta });
+    const hasProgress = clamped.season > 1 || clamped.episode > 1;
+
+    // Only override the user's explicit status pick in the two cases the
+    // progress fields make unambiguous — leave Favorite/Dropped/Rewatching
+    // alone otherwise so editing an episode number can't silently undo them.
+    if (finished) {
+      status = "completed";
+    } else if (hasProgress && (status === "completed" || status === "want_to_watch")) {
+      status = "watching";
+    }
+  }
+
+  update.status = status;
   if (status === "completed") update.completed_at = new Date().toISOString();
 
   const { error } = await supabase
     .from("saved_items")
     .update(update)
     .eq("id", itemId)
-    .eq("user_id", user!.id);
+    .eq("user_id", user.id);
 
   if (error) {
     console.error("updateSavedItem failed:", error);
@@ -190,21 +246,33 @@ export async function incrementEpisode(itemId: string) {
 
   const { data: item } = await supabase
     .from("saved_items")
-    .select("current_episode")
+    .select("current_season, current_episode, total_seasons, total_episodes, season_episode_counts")
     .eq("id", itemId)
     .eq("user_id", user.id)
     .single();
 
   if (!item) return;
 
-  await supabase
-    .from("saved_items")
-    .update({ current_episode: (item.current_episode ?? 0) + 1 })
-    .eq("id", itemId)
-    .eq("user_id", user.id);
+  const result = advanceEpisode({
+    season: item.current_season ?? 1,
+    episode: item.current_episode ?? 0,
+    totalSeasons: item.total_seasons,
+    totalEpisodes: item.total_episodes,
+    seasonEpisodeCounts: item.season_episode_counts,
+  });
+
+  const update: Partial<SavedItemRow> = {
+    current_season: result.season,
+    current_episode: result.episode,
+    status: result.finished ? "completed" : "watching",
+  };
+  if (result.finished) update.completed_at = new Date().toISOString();
+
+  await supabase.from("saved_items").update(update).eq("id", itemId).eq("user_id", user.id);
 
   revalidatePath(`/library/${itemId}`);
   revalidatePath("/library");
+  revalidatePath("/dashboard");
 }
 
 export async function markCompleted(itemId: string) {
@@ -214,11 +282,31 @@ export async function markCompleted(itemId: string) {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  await supabase
+  const { data: item } = await supabase
     .from("saved_items")
-    .update({ status: "completed", completed_at: new Date().toISOString() })
+    .select("media_type, total_seasons, total_episodes, season_episode_counts")
     .eq("id", itemId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .single();
+
+  if (!item) return;
+
+  const update: Partial<SavedItemRow> = {
+    status: "completed",
+    completed_at: new Date().toISOString(),
+  };
+
+  if (item.media_type === "tv") {
+    const final = finalProgress({
+      totalSeasons: item.total_seasons,
+      totalEpisodes: item.total_episodes,
+      seasonEpisodeCounts: item.season_episode_counts,
+    });
+    update.current_season = final.season;
+    update.current_episode = final.episode;
+  }
+
+  await supabase.from("saved_items").update(update).eq("id", itemId).eq("user_id", user.id);
 
   revalidatePath(`/library/${itemId}`);
   revalidatePath("/library");

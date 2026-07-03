@@ -26,29 +26,50 @@ export function formatYear(dateString: string | null | undefined): string {
 }
 
 /**
- * Approximates TV progress as a percentage. ScreenDiary only stores aggregate
- * total_seasons/total_episodes (not a per-season episode breakdown), so this
- * assumes an even distribution of episodes across seasons.
+ * TV progress as a percentage. When `seasonEpisodeCounts` is available (real
+ * per-season episode counts from TMDb), this sums exact watched episodes.
+ * Otherwise it falls back to assuming an even distribution of episodes
+ * across seasons using the aggregate total_seasons/total_episodes.
  */
 export function computeProgress({
   currentSeason,
   currentEpisode,
   totalSeasons,
   totalEpisodes,
+  seasonEpisodeCounts,
 }: {
   currentSeason: number | null;
   currentEpisode: number | null;
   totalSeasons: number | null;
   totalEpisodes: number | null;
+  seasonEpisodeCounts?: Record<string, number> | null;
 }): number | null {
-  if (
-    !currentSeason ||
-    !currentEpisode ||
-    !totalSeasons ||
-    !totalEpisodes ||
-    totalSeasons <= 0 ||
-    totalEpisodes <= 0
-  ) {
+  if (!currentSeason || !currentEpisode) return null;
+
+  if (seasonEpisodeCounts && Object.keys(seasonEpisodeCounts).length > 0) {
+    const seasonNumbers = Object.keys(seasonEpisodeCounts)
+      .map(Number)
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => a - b);
+    const totalFromMap = seasonNumbers.reduce(
+      (sum, s) => sum + (seasonEpisodeCounts[String(s)] ?? 0),
+      0
+    );
+
+    if (totalFromMap > 0) {
+      let watched = 0;
+      for (const s of seasonNumbers) {
+        if (s < currentSeason) watched += seasonEpisodeCounts[String(s)] ?? 0;
+      }
+      const currentSeasonCount = seasonEpisodeCounts[String(currentSeason)];
+      watched += currentSeasonCount != null ? Math.min(currentEpisode, currentSeasonCount) : currentEpisode;
+
+      const percent = Math.round((watched / totalFromMap) * 100);
+      return Math.min(100, Math.max(0, percent));
+    }
+  }
+
+  if (!totalSeasons || !totalEpisodes || totalSeasons <= 0 || totalEpisodes <= 0) {
     return null;
   }
 

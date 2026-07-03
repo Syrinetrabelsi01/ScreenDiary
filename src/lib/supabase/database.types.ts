@@ -32,6 +32,7 @@ export type SavedItemRow = {
   total_seasons: number | null;
   total_episodes: number | null;
   runtime_minutes: number | null;
+  season_episode_counts: Record<string, number> | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

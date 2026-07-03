@@ -21,6 +21,7 @@ export function LibraryCard({
           currentEpisode: item.current_episode,
           totalSeasons: item.total_seasons,
           totalEpisodes: item.total_episodes,
+          seasonEpisodeCounts: item.season_episode_counts,
         })
       : null;
 

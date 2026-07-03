@@ -30,8 +30,9 @@ npm install
 1. Go to [supabase.com](https://supabase.com) and create a new project.
 2. Open **SQL Editor** → New query, paste the contents of [`supabase/schema.sql`](./supabase/schema.sql), and run it. This creates the `profiles`, `saved_items`, `mood_tags`, and `item_mood_tags` tables, seeds the 17 mood tags, and sets up Row Level Security so users can only ever see their own data.
 3. Run [`supabase/migrations/002_add_runtime.sql`](./supabase/migrations/002_add_runtime.sql) too (Phase 2) — it adds the `runtime_minutes` column Watch Tonight uses for its "how much time do you have?" filter.
-4. Go to **Project Settings → API** and copy the **Project URL** and **anon public key**.
-5. By default, Supabase requires email confirmation for new signups. For local testing you can turn this off under **Authentication → Providers → Email → Confirm email**, or just check the inbox you sign up with.
+4. Run [`supabase/migrations/003_tv_progress_limits.sql`](./supabase/migrations/003_tv_progress_limits.sql) too — it adds `season_episode_counts` (real per-season episode counts), which the TV tracker uses to clamp season/episode to valid values and roll over seasons correctly instead of guessing.
+5. Go to **Project Settings → API** and copy the **Project URL** and **anon public key**.
+6. By default, Supabase requires email confirmation for new signups. For local testing you can turn this off under **Authentication → Providers → Email → Confirm email**, or just check the inbox you sign up with.
 
 ### 3. Get a TMDb API key
 
@@ -88,9 +89,11 @@ src/
     random-picker/page.tsx, RandomPickerClient.tsx, actions.ts
     ai/page.tsx                                # Phase 3 placeholder
     api/tmdb/search/route.ts                   # the only browser-facing TMDb route
+  lib/tvProgress.ts                             # season/episode clamping, rollover, finale detection
 supabase/
   schema.sql                                   # Phase 1 schema + RLS policies
   migrations/002_add_runtime.sql               # Phase 2: adds runtime_minutes
+  migrations/003_tv_progress_limits.sql         # adds season_episode_counts
 ```
 
 ## How to test Watch Tonight
@@ -109,11 +112,20 @@ supabase/
 4. Click again with the same category to confirm it can land on a different item.
 5. Pick a category with nothing in it yet (e.g. "Favorites" if you have none) to see the empty state.
 
+## How to test the TV progress tracker
+
+1. Add a TV show from `/search` (added after running migration 003, so it has real per-season episode counts).
+2. Open its detail page — the tracker shows total seasons, the current season's episode limit, and an exact completion percentage.
+3. Click "+1 Episode" repeatedly through a season's last episode — it rolls over to the next season at episode 1 automatically, and to "Completed" (with a "✓ Finished" badge) on the series finale.
+4. Click "Mark Completed" on a show mid-way through — it jumps straight to the final season/episode, not just the status label.
+5. Manually type an out-of-range season or episode number into the tracker's inputs — it clamps immediately with an inline message (e.g. "Episode 999 isn't valid for season 2 — clamped to 8"), and the server clamps again on save regardless.
+6. Manually move a completed show's episode number backward and save — status reverts to "Watching" automatically.
+
 ## Known limitations
 
 - Search results aren't paginated (only the first page of TMDb results is shown).
 - "Highest rated" library sort uses your personal rating, not the TMDb rating.
-- TV completion % is an approximation (average episodes per season), since only aggregate season/episode totals are stored, not a per-season breakdown.
+- TV completion % uses real per-season episode counts when `season_episode_counts` is available (added after migration 003); for shows saved before that migration, it falls back to the old average-episodes-per-season approximation.
 - `runtime_minutes` (used by Watch Tonight's time filter) is only populated for items added **after** the Phase 2 migration — existing saved items have it as `null` and are simply treated as "no time constraint" rather than excluded.
 - Watch Tonight's scoring is a simple heuristic (mood match, continue/new match, favorite bonus, time fit, small random jitter), not a real ranking model.
 - No password reset flow yet. No image upload / custom avatars.
