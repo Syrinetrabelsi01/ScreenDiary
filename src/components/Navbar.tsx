@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/(auth)/actions";
+import { MobileNav } from "@/components/MobileNav";
+import { NAV_LINKS } from "@/lib/constants";
 
 export async function Navbar() {
   const supabase = await createClient();
@@ -10,7 +12,7 @@ export async function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/5 bg-background/80 backdrop-blur-md">
-      <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+      <nav className="relative mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link
           href={user ? "/dashboard" : "/"}
           className="font-display text-xl font-semibold tracking-tight text-foreground"
@@ -19,25 +21,28 @@ export async function Navbar() {
         </Link>
 
         {user ? (
-          <div className="flex items-center gap-6 text-sm">
-            <Link href="/dashboard" className="text-muted transition hover:text-foreground">
-              Dashboard
-            </Link>
-            <Link href="/search" className="text-muted transition hover:text-foreground">
-              Search
-            </Link>
-            <Link href="/library" className="text-muted transition hover:text-foreground">
-              Library
-            </Link>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="rounded-full border border-white/10 px-4 py-1.5 text-muted transition hover:border-white/20 hover:text-foreground"
-              >
-                Logout
-              </button>
-            </form>
-          </div>
+          <>
+            <div className="hidden items-center gap-5 text-sm sm:flex">
+              {NAV_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="text-muted transition hover:text-foreground"
+                >
+                  {link.label}
+                </Link>
+              ))}
+              <form action={signOut}>
+                <button
+                  type="submit"
+                  className="rounded-full border border-white/10 px-4 py-1.5 text-muted transition hover:border-white/20 hover:text-foreground"
+                >
+                  Logout
+                </button>
+              </form>
+            </div>
+            <MobileNav onLogout={signOut} />
+          </>
         ) : (
           <div className="flex items-center gap-3 text-sm">
             <Link href="/login" className="text-muted transition hover:text-foreground">

@@ -38,6 +38,7 @@ export interface TmdbMovieDetails {
   release_date: string;
   vote_average: number;
   genres: TmdbGenre[];
+  runtime: number | null;
 }
 
 export interface TmdbTvDetails {
@@ -51,6 +52,7 @@ export interface TmdbTvDetails {
   number_of_seasons: number;
   number_of_episodes: number;
   seasons: TmdbSeason[];
+  episode_run_time: number[];
 }
 
 export interface TmdbReview {

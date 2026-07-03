@@ -7,9 +7,11 @@ import type { SavedItemRow } from "@/lib/supabase/database.types";
 export function LibraryCard({
   item,
   moodTags,
+  reason,
 }: {
   item: SavedItemRow;
   moodTags: string[];
+  reason?: string;
 }) {
   const poster = tmdbImageUrl(item.poster_path, "w342");
   const progress =
@@ -91,6 +93,10 @@ export function LibraryCard({
             S{item.current_season} · E{item.current_episode}
             {progress !== null ? ` — ${progress}%` : ""}
           </p>
+        )}
+
+        {reason && (
+          <p className="mt-auto text-[11px] italic leading-snug text-accent-rose/90">{reason}</p>
         )}
       </div>
     </Link>

@@ -1,7 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/search", "/library", "/ai"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/search",
+  "/library",
+  "/ai",
+  "/watch-tonight",
+  "/random-picker",
+];
 const AUTH_ONLY_PATHS = ["/login", "/signup"];
 
 // Refreshes the Supabase auth session on every request and gates access to

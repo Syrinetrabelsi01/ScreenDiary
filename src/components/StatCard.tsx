@@ -4,7 +4,7 @@ export function StatCard({
   emoji,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   emoji: string;
 }) {
   return (

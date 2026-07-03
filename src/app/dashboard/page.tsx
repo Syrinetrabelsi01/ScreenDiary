@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSavedItemsWithMoodTags } from "@/lib/supabase/queries";
 import { StatCard } from "@/components/StatCard";
+import { StatBar } from "@/components/StatBar";
 import { LibraryCard } from "@/components/LibraryCard";
 import { EmptyState } from "@/components/EmptyState";
-import type { SavedItemRow, MoodTagLinkRow } from "@/lib/supabase/database.types";
+import { STATUS_OPTIONS, statusLabel } from "@/lib/constants";
+import { isWithinPastDays } from "@/lib/utils";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -13,34 +16,40 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: items } = await supabase
-    .from("saved_items")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("updated_at", { ascending: false });
+  const entries = await getSavedItemsWithMoodTags(supabase, user.id);
+  const savedItems = entries.map((e) => e.item);
+  const moodTagsByItem = new Map(entries.map((e) => [e.item.id, e.moodTags]));
+  const total = savedItems.length;
 
-  const savedItems: SavedItemRow[] = items ?? [];
+  const statusCounts = Object.fromEntries(
+    STATUS_OPTIONS.map((s) => [s.value, savedItems.filter((i) => i.status === s.value).length])
+  ) as Record<(typeof STATUS_OPTIONS)[number]["value"], number>;
 
-  const { data: moodLinks } = await supabase
-    .from("item_mood_tags")
-    .select("saved_item_id, mood_tags(name)")
-    .in("saved_item_id", savedItems.map((i) => i.id).length ? savedItems.map((i) => i.id) : ["00000000-0000-0000-0000-000000000000"]);
+  const moviesWatched = savedItems.filter(
+    (i) => i.media_type === "movie" && i.status === "completed"
+  ).length;
+  const tvShowsTracked = savedItems.filter((i) => i.media_type === "tv").length;
 
-  const moodTagsByItem = new Map<string, string[]>();
-  ((moodLinks ?? []) as unknown as MoodTagLinkRow[]).forEach((link) => {
-    const name = link.mood_tags?.name;
-    if (!name) return;
-    const list = moodTagsByItem.get(link.saved_item_id) ?? [];
-    list.push(name);
-    moodTagsByItem.set(link.saved_item_id, list);
-  });
+  const ratedItems = savedItems.filter((i) => i.personal_rating !== null);
+  const averageRating =
+    ratedItems.length > 0
+      ? (ratedItems.reduce((sum, i) => sum + (i.personal_rating ?? 0), 0) / ratedItems.length).toFixed(1)
+      : "—";
 
-  const counts = {
-    want_to_watch: savedItems.filter((i) => i.status === "want_to_watch").length,
-    watching: savedItems.filter((i) => i.status === "watching").length,
-    completed: savedItems.filter((i) => i.status === "completed").length,
-    favorite: savedItems.filter((i) => i.status === "favorite").length,
-  };
+  const recentlyCompletedCount = savedItems.filter((i) => isWithinPastDays(i.completed_at, 30)).length;
+
+  const moodTagCounts = new Map<string, number>();
+  entries.forEach((e) => e.moodTags.forEach((tag) => moodTagCounts.set(tag, (moodTagCounts.get(tag) ?? 0) + 1)));
+  const topMoodTags = [...moodTagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const mostUsedMoodTag = topMoodTags[0]?.[0] ?? null;
+
+  const highestRatedItem = [...ratedItems].sort(
+    (a, b) => (b.personal_rating ?? 0) - (a.personal_rating ?? 0)
+  )[0];
+
+  const topRatedItems = [...ratedItems]
+    .sort((a, b) => (b.personal_rating ?? 0) - (a.personal_rating ?? 0))
+    .slice(0, 5);
 
   const continueWatching = savedItems.filter((i) => i.status === "watching").slice(0, 5);
   const recentlyAdded = [...savedItems]
@@ -66,12 +75,83 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Want to Watch" value={counts.want_to_watch} emoji="📌" />
-        <StatCard label="Watching" value={counts.watching} emoji="▶️" />
-        <StatCard label="Completed" value={counts.completed} emoji="✅" />
-        <StatCard label="Favorites" value={counts.favorite} emoji="❤️" />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
+        <StatCard label="Total Saved" value={total} emoji="📚" />
+        <StatCard label="Want to Watch" value={statusCounts.want_to_watch ?? 0} emoji="📌" />
+        <StatCard label="Watching" value={statusCounts.watching ?? 0} emoji="▶️" />
+        <StatCard label="Completed" value={statusCounts.completed ?? 0} emoji="✅" />
+        <StatCard label="Dropped" value={statusCounts.dropped ?? 0} emoji="⏸️" />
+        <StatCard label="Favorites" value={statusCounts.favorite ?? 0} emoji="❤️" />
+        <StatCard label="Movies Watched" value={moviesWatched} emoji="🎬" />
+        <StatCard label="TV Shows Tracked" value={tvShowsTracked} emoji="📺" />
+        <StatCard label="Average Rating" value={averageRating} emoji="⭐" />
+        <StatCard label="Completed (30d)" value={recentlyCompletedCount} emoji="🗓️" />
       </div>
+
+      {(mostUsedMoodTag || highestRatedItem) && (
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {mostUsedMoodTag && (
+            <div className="glass-card flex items-center gap-4 rounded-2xl px-5 py-4">
+              <span className="text-2xl">💭</span>
+              <div>
+                <p className="font-display text-xl text-foreground">{mostUsedMoodTag}</p>
+                <p className="text-xs text-muted">Your most-used mood tag</p>
+              </div>
+            </div>
+          )}
+          {highestRatedItem && (
+            <div className="glass-card flex items-center gap-4 rounded-2xl px-5 py-4">
+              <span className="text-2xl">🏆</span>
+              <div>
+                <p className="font-display text-xl text-foreground">{highestRatedItem.title}</p>
+                <p className="text-xs text-muted">
+                  Highest rated — {highestRatedItem.personal_rating}/10
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {total > 0 && (
+        <section className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-2">
+          <div className="glass-card space-y-4 rounded-2xl p-5">
+            <h2 className="font-display text-lg text-foreground">Status Breakdown</h2>
+            {STATUS_OPTIONS.map((s) => (
+              <StatBar
+                key={s.value}
+                label={statusLabel(s.value)}
+                count={statusCounts[s.value] ?? 0}
+                total={total}
+              />
+            ))}
+          </div>
+
+          <div className="glass-card space-y-4 rounded-2xl p-5">
+            <h2 className="font-display text-lg text-foreground">Mood Tag Breakdown</h2>
+            {topMoodTags.length === 0 ? (
+              <p className="text-sm text-muted">
+                Add mood tags to your saved items to see your patterns here.
+              </p>
+            ) : (
+              topMoodTags.map(([tag, count]) => (
+                <StatBar key={tag} label={tag} count={count} total={entries.length} />
+              ))
+            )}
+          </div>
+        </section>
+      )}
+
+      {topRatedItems.length > 0 && (
+        <section className="mt-12">
+          <h2 className="font-display text-xl text-foreground">Top Rated</h2>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
+            {topRatedItems.map((item) => (
+              <LibraryCard key={item.id} item={item} moodTags={moodTagsByItem.get(item.id) ?? []} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mt-12">
         <h2 className="font-display text-xl text-foreground">Continue Watching</h2>

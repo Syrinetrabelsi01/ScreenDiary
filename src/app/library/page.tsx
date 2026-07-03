@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSavedItemsWithMoodTags } from "@/lib/supabase/queries";
 import { LibraryCard } from "@/components/LibraryCard";
 import { EmptyState } from "@/components/EmptyState";
 import { FILTER_OPTIONS, SORT_OPTIONS, type FilterOption, type SortOption } from "@/lib/constants";
-import type { SavedItemRow, MoodTagLinkRow } from "@/lib/supabase/database.types";
+import type { SavedItemRow } from "@/lib/supabase/database.types";
 
 export default async function LibraryPage({
   searchParams,
@@ -22,25 +23,10 @@ export default async function LibraryPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: items } = await supabase.from("saved_items").select("*").eq("user_id", user.id);
-  let savedItems: SavedItemRow[] = items ?? [];
-
-  const { data: moodLinks } = await supabase
-    .from("item_mood_tags")
-    .select("saved_item_id, mood_tags(name)")
-    .in(
-      "saved_item_id",
-      savedItems.length ? savedItems.map((i) => i.id) : ["00000000-0000-0000-0000-000000000000"]
-    );
-
-  const moodTagsByItem = new Map<string, string[]>();
-  ((moodLinks ?? []) as unknown as MoodTagLinkRow[]).forEach((link) => {
-    const name = link.mood_tags?.name;
-    if (!name) return;
-    const list = moodTagsByItem.get(link.saved_item_id) ?? [];
-    list.push(name);
-    moodTagsByItem.set(link.saved_item_id, list);
-  });
+  const entries = await getSavedItemsWithMoodTags(supabase, user.id);
+  const moodTagsByItem = new Map(entries.map((e) => [e.item.id, e.moodTags]));
+  let savedItems: SavedItemRow[] = entries.map((e) => e.item);
+  const totalItems = savedItems.length;
 
   if (filter === "movie" || filter === "tv") {
     savedItems = savedItems.filter((i) => i.media_type === filter);
@@ -53,8 +39,6 @@ export default async function LibraryPage({
     if (sort === "rating") return (b.personal_rating ?? -1) - (a.personal_rating ?? -1);
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
-
-  const totalItems = items?.length ?? 0;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">

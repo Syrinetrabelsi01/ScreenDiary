@@ -51,6 +51,7 @@ export async function addToLibrary(
           release_date: details.release_date || null,
           genres: details.genres.map((g) => g.name),
           tmdb_rating: details.vote_average || null,
+          runtime_minutes: details.runtime || null,
         })
         .select("id")
         .single();
@@ -62,6 +63,13 @@ export async function addToLibrary(
     }
 
     const details = await getTvDetails(tmdbId);
+    const avgEpisodeRuntime =
+      details.episode_run_time && details.episode_run_time.length > 0
+        ? Math.round(
+            details.episode_run_time.reduce((sum, minutes) => sum + minutes, 0) /
+              details.episode_run_time.length
+          )
+        : null;
     const { data, error } = await supabase
       .from("saved_items")
       .insert({
@@ -78,6 +86,7 @@ export async function addToLibrary(
         current_episode: 1,
         total_seasons: details.number_of_seasons || null,
         total_episodes: details.number_of_episodes || null,
+        runtime_minutes: avgEpisodeRuntime,
       })
       .select("id")
       .single();

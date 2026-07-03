@@ -62,3 +62,12 @@ export function truncate(text: string, maxLength: number): { text: string; wasTr
   if (text.length <= maxLength) return { text, wasTruncated: false };
   return { text: text.slice(0, maxLength).trimEnd() + "…", wasTruncated: true };
 }
+
+// Kept as a plain helper (rather than inlined `Date.now()` in a component body)
+// so the current-time read stays outside anything React's purity rules treat as render.
+export function isWithinPastDays(dateString: string | null | undefined, days: number): boolean {
+  if (!dateString) return false;
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return false;
+  return Date.now() - date.getTime() <= days * 24 * 60 * 60 * 1000;
+}

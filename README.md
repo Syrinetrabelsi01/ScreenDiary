@@ -6,7 +6,9 @@ Search movies and TV shows, save them to your own library, track episode-by-epis
 progress, rate what you finish, tag it with a mood, and write personal notes — all in
 a dark, cinematic, Letterboxd-meets-personal-Netflix interface.
 
-This is the **Phase 1 MVP**. See [Roadmap](#roadmap--phase-23) below for what's next.
+Phase 1 (auth, search, library, ratings, mood tags, TV progress, reviews) and Phase 2
+(Watch Tonight, Random Picker, richer stats) are both done. See [Roadmap](#roadmap--phase-3)
+below for what's next.
 
 ## Stack
 
@@ -27,8 +29,9 @@ npm install
 
 1. Go to [supabase.com](https://supabase.com) and create a new project.
 2. Open **SQL Editor** → New query, paste the contents of [`supabase/schema.sql`](./supabase/schema.sql), and run it. This creates the `profiles`, `saved_items`, `mood_tags`, and `item_mood_tags` tables, seeds the 17 mood tags, and sets up Row Level Security so users can only ever see their own data.
-3. Go to **Project Settings → API** and copy the **Project URL** and **anon public key**.
-4. By default, Supabase requires email confirmation for new signups. For local testing you can turn this off under **Authentication → Providers → Email → Confirm email**, or just check the inbox you sign up with.
+3. Run [`supabase/migrations/002_add_runtime.sql`](./supabase/migrations/002_add_runtime.sql) too (Phase 2) — it adds the `runtime_minutes` column Watch Tonight uses for its "how much time do you have?" filter.
+4. Go to **Project Settings → API** and copy the **Project URL** and **anon public key**.
+5. By default, Supabase requires email confirmation for new signups. For local testing you can turn this off under **Authentication → Providers → Email → Confirm email**, or just check the inbox you sign up with.
 
 ### 3. Get a TMDb API key
 
@@ -69,38 +72,56 @@ Open [http://localhost:3000](http://localhost:3000).
 src/
   middleware entry:  src/proxy.ts            # session refresh + route protection
   lib/
-    supabase/        client.ts, server.ts    # browser / server Supabase clients
+    supabase/        client.ts, server.ts, queries.ts  # clients + shared saved-items+mood-tags query
     tmdb/             client.ts, types.ts    # server-only TMDb helpers
-    constants.ts                             # statuses, mood tags, emoji options
+    constants.ts                             # statuses, mood tags, nav links, Watch Tonight/Random Picker options
     utils.ts                                  # image URLs, dates, progress math
-  components/                                 # shared UI (cards, pickers, trackers…)
+    recommend.ts                              # Watch Tonight scoring + Random Picker category filtering
+  components/                                 # shared UI (cards, pickers, trackers, stat bars, mobile nav…)
   app/
     page.tsx                                  # landing page
     (auth)/login, (auth)/signup, (auth)/actions.ts
-    dashboard/page.tsx
+    dashboard/page.tsx                         # stats, breakdowns, continue watching, recently added
     search/page.tsx
     library/page.tsx, library/[id]/page.tsx, library/actions.ts
-    ai/page.tsx                                # Phase 2/3 placeholder
+    watch-tonight/page.tsx                     # guided recommender
+    random-picker/page.tsx, RandomPickerClient.tsx, actions.ts
+    ai/page.tsx                                # Phase 3 placeholder
     api/tmdb/search/route.ts                   # the only browser-facing TMDb route
-supabase/schema.sql                            # full DB schema + RLS policies
+supabase/
+  schema.sql                                   # Phase 1 schema + RLS policies
+  migrations/002_add_runtime.sql               # Phase 2: adds runtime_minutes
 ```
 
-## Known limitations (Phase 1)
+## How to test Watch Tonight
+
+1. Make sure you have at least a few saved items with a mix of statuses/mood tags/media types (a fresh diary shows the "add movies or shows first" empty state).
+2. Go to `/watch-tonight`. With no filters touched, you already get a recommendation.
+3. Click through the pill filters (type, time, mood, continue-or-new) — the URL updates (`?type=movie&mood=comforting&mode=continue`, etc.) and the page re-recommends server-side. No client JS required for the questionnaire itself.
+4. Set type to something you have zero saved items of (e.g. `tv` when you've only saved movies) to see the "nothing matches those filters" empty state.
+5. Set mood to "Comforting" on an item tagged "Comfort" to see it surface as the main pick, with a reason line explaining why.
+
+## How to test Random Picker
+
+1. Go to `/random-picker`.
+2. Pick a category pill (defaults to "From everything").
+3. Click "🎲 Pick for me" — you'll see a brief pulsing "Picking something for you…" state, then a result card with a "Picked at random from…" reason line.
+4. Click again with the same category to confirm it can land on a different item.
+5. Pick a category with nothing in it yet (e.g. "Favorites" if you have none) to see the empty state.
+
+## Known limitations
 
 - Search results aren't paginated (only the first page of TMDb results is shown).
-- "Highest rated" sort uses your personal rating, not the TMDb rating.
-- TV completion % is an approximation (average episodes per season), since only
-  aggregate season/episode totals are stored, not a per-season breakdown.
-- No password reset flow yet.
-- No image upload / custom avatars.
+- "Highest rated" library sort uses your personal rating, not the TMDb rating.
+- TV completion % is an approximation (average episodes per season), since only aggregate season/episode totals are stored, not a per-season breakdown.
+- `runtime_minutes` (used by Watch Tonight's time filter) is only populated for items added **after** the Phase 2 migration — existing saved items have it as `null` and are simply treated as "no time constraint" rather than excluded.
+- Watch Tonight's scoring is a simple heuristic (mood match, continue/new match, favorite bonus, time fit, small random jitter), not a real ranking model.
+- No password reset flow yet. No image upload / custom avatars.
 
-## Roadmap — Phase 2/3
+## Roadmap — Phase 3
 
 `/ai` is a placeholder page today. It's reserved for:
 
-- 🌙 Watch Tonight recommendations
-- 🎲 Random picker
-- 📊 Stats dashboard
 - 🤖 AI recommendation helper
 - 🧹 AI review cleaner
 - 💭 AI mood matcher
